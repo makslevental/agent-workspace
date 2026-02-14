@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# Show PRs, issues, and code reviews from the past N days.
+# Works across all repos (public and private) via GitHub CLI.
+#
+# Usage: my-activity [USERNAME] [--days N] [--group-by repo] [--prs-only | --issues-only | --reviews-only]
+
+set -euo pipefail
+
+export GH_PAGER=
+
+days=7
+show_prs=true
+show_issues=true
+show_reviews=true
+group_by=
+user=
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --days|-d)
+            days="$2"
+            shift 2
+            ;;
+        --group-by|-g)
+            case "${2-}" in
+                repo) group_by=repo ;;
+                *) echo "Unknown group-by value: ${2-} (supported: repo)" >&2; exit 1 ;;
+            esac
+            shift 2
+            ;;
+        --prs-only)
+            show_issues=false
+            show_reviews=false
+            shift
+            ;;
+        --issues-only)
+            show_prs=false
+            show_reviews=false
+            shift
+            ;;
+        --reviews-only)
+            show_prs=false
+            show_issues=false
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: my-activity [USERNAME] [--days N] [--group-by repo] [--prs-only | --issues-only | --reviews-only]"
+            echo ""
+            echo "Show PRs, issues, and code reviews from the past N days."
+            echo ""
+            echo "Arguments:"
+            echo "  USERNAME            GitHub username (default: authenticated user)"
+            echo ""
+            echo "Options:"
+            echo "  -d, --days N        Look back N days (default: 7)"
+            echo "  -g, --group-by repo Group output by repository"
+            echo "  --prs-only          Show only pull requests"
+            echo "  --issues-only       Show only issues"
+            echo "  --reviews-only      Show only code reviews"
+            echo "  -h, --help          Show this help"
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            user="$1"
+            shift
+            ;;
+    esac
+done
+
+if ! command -v gh &>/dev/null; then
+    echo "Error: gh (GitHub CLI) is required. Install from https://cli.github.com/" >&2
+    exit 1
+fi
+
+since=$(date -u -d "$days days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+     || date -u -v-"${days}d" +%Y-%m-%dT%H:%M:%SZ)
+
+if [[ -n "$user" ]]; then
+    me="$user"
+else
+    me=$(gh api user --jq .login)
+fi
+
+json_fields=repository,title,state,url,createdAt,number
+
+# Fetch each category as JSON, tagging with "kind".
+fetch_prs() {
+    gh search prs --author="$me" --created=">=$since" \
+        --json "$json_fields" \
+        --jq '[.[] | . + {kind: "PR"}]' 2>/dev/null || echo '[]'
+}
+
+fetch_reviews() {
+    gh search prs --reviewed-by="$me" --created=">=$since" \
+        --json "$json_fields,author" \
+        --jq "[.[] | select(.author.login != \"$me\") | {kind: \"review\", pr_author: .author.login} + del(.author)]" 2>/dev/null || echo '[]'
+}
+
+fetch_issues() {
+    gh search issues --author="$me" --created=">=$since" \
+        --json "$json_fields" \
+        --jq '[.[] | . + {kind: "issue"}]' 2>/dev/null || echo '[]'
+}
+
+# Format a JSON array as a table. Items must have repository, number, title, state, createdAt.
+# Reviews also have pr_author.
+format_rows() {
+    jq -r '
+        if length == 0 then "(no results)"
+        else .[] |
+            if .pr_author then "\(.repository.nameWithOwner)#\(.number)\t\(.title)\t\(.state)\t@\(.pr_author)\t\(.url)"
+            else "\(.repository.nameWithOwner)#\(.number)\t\(.title)\t\(.state)\t\(.url)"
+            end
+        end
+    ' | column -t -s $'\t'
+}
+
+# ---------- Default: group by type ----------
+
+display_by_type() {
+    if $show_prs; then
+        echo "=== Pull Requests (last $days days) ==="
+        echo ""
+        fetch_prs | format_rows
+        echo ""
+    fi
+
+    if $show_reviews; then
+        echo "=== Code Reviews (last $days days) ==="
+        echo ""
+        fetch_reviews | format_rows
+        echo ""
+    fi
+
+    if $show_issues; then
+        echo "=== Issues (last $days days) ==="
+        echo ""
+        fetch_issues | format_rows
+    fi
+}
+
+# ---------- Group by repo ----------
+
+display_by_repo() {
+    local all="[]"
+
+    if $show_prs; then
+        all=$(jq -s '.[0] + .[1]' <(echo "$all") <(fetch_prs))
+    fi
+    if $show_reviews; then
+        all=$(jq -s '.[0] + .[1]' <(echo "$all") <(fetch_reviews))
+    fi
+    if $show_issues; then
+        all=$(jq -s '.[0] + .[1]' <(echo "$all") <(fetch_issues))
+    fi
+
+    if [[ "$(echo "$all" | jq 'length')" -eq 0 ]]; then
+        echo "(no activity in the last $days days)"
+        return
+    fi
+
+    echo "$all" | jq -r '
+        group_by(.repository.nameWithOwner)
+        | sort_by(.[0].repository.nameWithOwner)
+        | .[]
+        | (.[0].repository.nameWithOwner) as $repo
+        | "=== \($repo) ===",
+          (sort_by(.createdAt) | reverse | .[] |
+            if .pr_author then "  #\(.number)  \(.kind)  \(.state)  \(.title)  @\(.pr_author)  \(.url)"
+            else "  #\(.number)  \(.kind)  \(.state)  \(.title)  \(.url)"
+            end
+          ),
+          ""
+    '
+}
+
+# ---------- Main ----------
+
+if [[ "$group_by" == "repo" ]]; then
+    display_by_repo
+else
+    display_by_type
+fi
