@@ -23,8 +23,9 @@ mkdir -p <workspace>/.cursor
 cp /path/to/cli.sample.json <workspace>/.cursor/cli.json
 ```
 
-The sample allows read-only access and git commands, with writes restricted to
-`.cursor/tasks/**`. Users should add project-specific shell commands (e.g.
+The sample allows read-only access and git commands, with all writes denied.
+The agents don't need write permissions — their stdout is captured into output
+files by the script. Users should add project-specific shell commands (e.g.
 `Shell(ninja **)`, `Shell(pytest **)`) as needed.
 
 ## Steps
@@ -48,7 +49,7 @@ The sample allows read-only access and git commands, with writes restricted to
    Available options (pass through from the user if specified):
    - `--models M1,M2,...` — override the default model set
    - `--names N1,N2,...` — custom names for each model
-   - `--timeout SECS` — per-agent timeout (default: 240)
+   - `--timeout SECS` — per-agent timeout (default: 360)
 
    Defaults: gpt-5.3-codex-fast, sonnet-4.6, gemini-3.1-pro, gemini-3-flash.
    Run `cursor-agent --list-models` to see all available models.

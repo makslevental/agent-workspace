@@ -9,8 +9,7 @@
       "Shell(git status **)",
       "Shell(git log **)",
       "Shell(git show **)",
-      "Shell(git blame **)",
-      "Write(.cursor/tasks/**)"
+      "Shell(git blame **)"
     ],
     "deny": [
       "Write(**)",

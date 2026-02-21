@@ -7,16 +7,17 @@ Usage: cursor-task [OPTIONS] --workspace DIR PROMPT...
 
 Run a Cursor agent non-interactively to produce a markdown file.
 
-The agent can read the entire workspace and run whitelisted shell commands,
-but can only write to the output directory configured in .cursor/cli.json.
-The workspace must contain .cursor/cli.json with a non-empty deny list and
-a Write(...) rule in the allow list.
+The agent's stdout is captured into output.md. The agent does not need
+write permissions — all file output is handled by this script.
+
+The workspace must contain .cursor/cli.json with a non-empty deny list.
 
 Options:
   --model MODEL       Model to use (default: sonnet-4)
   --workspace DIR     Workspace directory (required)
+  --output-dir DIR    Output directory (default: <workspace>/.cursor/tasks)
   --name NAME         Task name for the output subdirectory (default: timestamp)
-  --timeout SECS      Timeout in seconds (default: 240)
+  --timeout SECS      Timeout in seconds (default: 360)
   -h, --help          Show this help
 
 Examples:
@@ -31,19 +32,21 @@ EOF
 
 model="sonnet-4"
 workspace=""
+output_dir=""
 task_name=""
-timeout_secs=240
+timeout_secs=360
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --model)     model="$2"; shift 2 ;;
-        --workspace) workspace="$2"; shift 2 ;;
-        --name)      task_name="$2"; shift 2 ;;
-        --timeout)   timeout_secs="$2"; shift 2 ;;
-        -h|--help)   usage 0 ;;
-        --)          shift; break ;;
-        -*)          echo "Error: Unknown option: $1" >&2; usage 1 ;;
-        *)           break ;;
+        --model)      model="$2"; shift 2 ;;
+        --workspace)  workspace="$2"; shift 2 ;;
+        --output-dir) output_dir="$2"; shift 2 ;;
+        --name)       task_name="$2"; shift 2 ;;
+        --timeout)    timeout_secs="$2"; shift 2 ;;
+        -h|--help)    usage 0 ;;
+        --)           shift; break ;;
+        -*)           echo "Error: Unknown option: $1" >&2; usage 1 ;;
+        *)            break ;;
     esac
 done
 
@@ -83,33 +86,15 @@ if [[ "$deny_count" -eq 0 ]]; then
     exit 1
 fi
 
-# Extract the output directory from the first Write(...) allow rule.
-write_pattern=$(jq -r '
-  .permissions.allow[]
-  | select(startswith("Write("))
-  | sub("^Write\\("; "")
-  | sub("/\\*\\*\\)$"; "")
-' "$cli_json" | head -1)
-
-if [[ -z "$write_pattern" ]]; then
-    echo "Error: no Write(...) rule found in allow list of $cli_json." >&2
-    echo "Add e.g. \"Write(.cursor/tasks/**)\" to permissions.allow." >&2
-    exit 1
-fi
-
-# Resolve the output base directory (pattern may be relative to workspace).
-if [[ "$write_pattern" = /* ]]; then
-    output_base="$write_pattern"
-else
-    output_base="$workspace/$write_pattern"
-fi
-
 # --- Create task output directory ---
 
+if [[ -z "$output_dir" ]]; then
+    output_dir="$workspace/.cursor/tasks"
+fi
 if [[ -z "$task_name" ]]; then
     task_name="$(date +%Y%m%d-%H%M%S)"
 fi
-task_dir="$output_base/$task_name"
+task_dir="$output_dir/$task_name"
 output_file="$task_dir/output.md"
 mkdir -p "$task_dir"
 
@@ -129,17 +114,12 @@ jq -n \
 
 # --- Run the agent ---
 
-full_prompt="$prompt
-
-IMPORTANT: Write your output ONLY to: $output_file
-Do NOT create or modify any other files."
-
-echo "cursor-task"
-echo "  Model:     $model"
-echo "  Workspace: $workspace"
-echo "  Output:    $output_file"
-echo "  Timeout:   ${timeout_secs}s"
-echo ""
+echo "cursor-task" >&2
+echo "  Model:     $model" >&2
+echo "  Workspace: $workspace" >&2
+echo "  Output:    $output_file" >&2
+echo "  Timeout:   ${timeout_secs}s" >&2
+echo "" >&2
 
 rc=0
 timeout "$timeout_secs" cursor-agent --print \
@@ -148,19 +128,20 @@ timeout "$timeout_secs" cursor-agent --print \
     --trust \
     --output-format text \
     --workspace "$workspace" \
-    "$full_prompt" || rc=$?
+    "$prompt" \
+    > "$output_file" || rc=$?
 
 end_time="$(date -Iseconds)"
 jq --arg end "$end_time" --argjson rc "$rc" '.end = $end | .exit_code = $rc' "$meta_file" > "$meta_file.tmp" \
     && mv "$meta_file.tmp" "$meta_file"
 
-echo ""
+echo "" >&2
 if [[ "$rc" -ne 0 ]]; then
     echo "Agent exited with code $rc. Output: $task_dir" >&2
     exit "$rc"
-elif [[ -f "$output_file" ]]; then
-    echo "Done. Output: $output_file"
+elif [[ -s "$output_file" ]]; then
+    echo "Done. Output: $output_file" >&2
 else
-    echo "Warning: agent finished but $output_file was not created." >&2
+    echo "Warning: agent finished but output is empty." >&2
     exit 1
 fi

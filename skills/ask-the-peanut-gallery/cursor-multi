@@ -17,8 +17,9 @@ Options:
   --models M1,M2,...  Comma-separated model IDs (default: see below)
   --names N1,N2,...   Comma-separated agent names (default: see below)
   --workspace DIR     Workspace directory (required)
+  --output-dir DIR    Output directory (default: <workspace>/.cursor/tasks)
   --task TASK         Task name prefix (default: timestamp)
-  --timeout SECS      Per-agent timeout in seconds (default: 240)
+  --timeout SECS      Per-agent timeout in seconds (default: 360)
   -h, --help          Show this help
 
 Default models: gpt-5.3-codex-fast, sonnet-4.6, gemini-3.1-pro, gemini-3-flash
@@ -42,20 +43,22 @@ DEFAULT_NAMES="gpt,claude,gemini-pro,gemini-flash"
 models=""
 names=""
 workspace=""
+output_dir=""
 task_prefix=""
-timeout_secs=240
+timeout_secs=360
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --models)    models="$2"; shift 2 ;;
-        --names)     names="$2"; shift 2 ;;
-        --workspace) workspace="$2"; shift 2 ;;
-        --task)      task_prefix="$2"; shift 2 ;;
-        --timeout)   timeout_secs="$2"; shift 2 ;;
-        -h|--help)   usage 0 ;;
-        --)          shift; break ;;
-        -*)          echo "Error: Unknown option: $1" >&2; usage 1 ;;
-        *)           break ;;
+        --models)     models="$2"; shift 2 ;;
+        --names)      names="$2"; shift 2 ;;
+        --workspace)  workspace="$2"; shift 2 ;;
+        --output-dir) output_dir="$2"; shift 2 ;;
+        --task)       task_prefix="$2"; shift 2 ;;
+        --timeout)    timeout_secs="$2"; shift 2 ;;
+        -h|--help)    usage 0 ;;
+        --)           shift; break ;;
+        -*)           echo "Error: Unknown option: $1" >&2; usage 1 ;;
+        *)            break ;;
     esac
 done
 
@@ -64,6 +67,12 @@ prompt="$*"
 if [[ -z "$workspace" || -z "$prompt" ]]; then
     echo "Error: --workspace and a prompt are required." >&2
     usage 1
+fi
+
+ws="$(realpath "$workspace")"
+
+if [[ -z "$output_dir" ]]; then
+    output_dir="$ws/.cursor/tasks"
 fi
 
 # Apply defaults: default names only pair with default models.
@@ -90,24 +99,9 @@ if [[ -z "$task_prefix" ]]; then
     task_prefix="$(date +%Y%m%d-%H%M%S)"
 fi
 
-# Resolve output base directory from cli.json (same logic as cursor-task).
-ws="$(realpath "$workspace")"
-cli_json="$ws/.cursor/cli.json"
-write_pattern=$(jq -r '
-  .permissions.allow[]
-  | select(startswith("Write("))
-  | sub("^Write\\("; "")
-  | sub("/\\*\\*\\)$"; "")
-' "$cli_json" | head -1)
-if [[ "$write_pattern" = /* ]]; then
-    output_base="$write_pattern"
-else
-    output_base="$ws/$write_pattern"
-fi
-
 echo "cursor-multi"
 echo "  Workspace: $workspace"
-echo "  Task:      $task_prefix"
+echo "  Output:    $output_dir/$task_prefix"
 echo "  Models:    ${model_arr[*]}"
 echo "  Names:     ${name_arr[*]}"
 echo "  Timeout:   ${timeout_secs}s"
@@ -120,7 +114,7 @@ for i in "${!model_arr[@]}"; do
     model="${model_arr[$i]}"
     name="${name_arr[$i]}"
     task_name="$task_prefix/$name"
-    log_dir="$output_base/$task_name"
+    log_dir="$output_dir/$task_name"
     mkdir -p "$log_dir"
     log_file="$log_dir/agent.log"
     log_files+=("$log_file")
@@ -130,6 +124,7 @@ for i in "${!model_arr[@]}"; do
     "$CURSOR_TASK" \
         --model "$model" \
         --workspace "$workspace" \
+        --output-dir "$output_dir" \
         --name "$task_name" \
         --timeout "$timeout_secs" \
         "$prompt" \
@@ -141,16 +136,25 @@ echo ""
 echo "All ${#pids[@]} agents launched. Waiting..."
 echo ""
 
-# Wait for all agents and collect results.
-failures=0
+# Wait for agents in completion order.
+# Build a pid-to-index map for lookup.
+declare -A pid_to_idx
 for i in "${!pids[@]}"; do
-    pid="${pids[$i]}"
+    pid_to_idx[${pids[$i]}]=$i
+done
+
+failures=0
+remaining=${#pids[@]}
+while [[ "$remaining" -gt 0 ]]; do
+    finished_pid=""
+    rc=0
+    wait -n -p finished_pid "${pids[@]}" || rc=$?
+    i="${pid_to_idx[$finished_pid]}"
     name="${name_arr[$i]}"
     model="${model_arr[$i]}"
     log="${log_files[$i]}"
 
-    rc=0
-    wait "$pid" || rc=$?
+    output_file="$output_dir/$task_prefix/$name/output.md"
     if [[ "$rc" -eq 0 ]]; then
         echo "[done] $name ($model)"
     else
@@ -158,13 +162,23 @@ for i in "${!pids[@]}"; do
         ((failures++)) || true
     fi
     echo "       Log: $log"
+    if [[ -s "$output_file" ]]; then
+        echo "       ---"
+        head -10 "$output_file" | sed 's/^/       /'
+        lines=$(wc -l < "$output_file")
+        if [[ "$lines" -gt 10 ]]; then
+            echo "       ... ($((lines - 10)) more lines)"
+        fi
+        echo ""
+    fi
+    ((remaining--)) || true
 done
 
 echo ""
 echo "Results:"
 for i in "${!name_arr[@]}"; do
     name="${name_arr[$i]}"
-    output_file="$output_base/$task_prefix/$name/output.md"
+    output_file="$output_dir/$task_prefix/$name/output.md"
 
     if [[ -f "$output_file" ]]; then
         echo "  $name: $output_file"
