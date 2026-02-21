@@ -17,7 +17,7 @@ Options:
   --workspace DIR     Workspace directory (required)
   --output-dir DIR    Output directory (default: <workspace>/.cursor/tasks)
   --name NAME         Task name for the output subdirectory (default: timestamp)
-  --timeout SECS      Timeout in seconds (default: 360)
+  --timeout SECS      Timeout in seconds (default: 480)
   -h, --help          Show this help
 
 Examples:
@@ -34,7 +34,7 @@ model="sonnet-4"
 workspace=""
 output_dir=""
 task_name=""
-timeout_secs=360
+timeout_secs=480
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

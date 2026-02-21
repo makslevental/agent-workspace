@@ -8,8 +8,9 @@ description: Asks multiple AI models the same question via Cursor agents and syn
 Delegate a question to multiple AI models (GPT, Claude/Sonnet, Gemini Pro,
 Gemini Flash) running as Cursor agents, then synthesize their responses.
 
-The `cursor-multi`, `cursor-task`, and `cli.sample.json` files are in the same
-directory as this skill file. Find them by looking in the skill directory.
+The `cursor-agent-multi.sh`, `cursor-agent-task.sh`, and `cli.sample.json` files
+are in the same directory as this skill file. Find them by looking in the skill
+directory.
 
 ## Prerequisites
 
@@ -31,13 +32,13 @@ files by the script. Users should add project-specific shell commands (e.g.
 ## Steps
 
 1. **Locate the scripts.** Find the directory containing this skill's files
-   and use the `cursor-multi` script there.
+   and use the `cursor-agent-multi.sh` script there.
 
-2. **Run cursor-multi** with the user's question. Default the workspace to the
-   current working directory.
+2. **Run cursor-agent-multi.sh** with the user's question. Default the workspace
+   to the current working directory.
 
    ```bash
-   /path/to/cursor-multi \
+   /path/to/cursor-agent-multi.sh \
      --workspace <WORKSPACE> \
      --task <short-kebab-case-name> \
      "<THE QUESTION>"
@@ -49,7 +50,7 @@ files by the script. Users should add project-specific shell commands (e.g.
    Available options (pass through from the user if specified):
    - `--models M1,M2,...` — override the default model set
    - `--names N1,N2,...` — custom names for each model
-   - `--timeout SECS` — per-agent timeout (default: 360)
+   - `--timeout SECS` — per-agent timeout (default: 480)
 
    Defaults: gpt-5.3-codex-fast, sonnet-4.6, gemini-3.1-pro, gemini-3-flash.
    Run `cursor-agent --list-models` to see all available models.
@@ -76,4 +77,4 @@ files by the script. Users should add project-specific shell commands (e.g.
 - Do NOT modify any files in the workspace.
 - If some models fail, still return results from the ones that succeeded and
   note which failed.
-- If cursor-multi itself fails (e.g. missing cli.json), report the error.
+- If cursor-agent-multi.sh itself fails (e.g., missing cli.json), report the error.

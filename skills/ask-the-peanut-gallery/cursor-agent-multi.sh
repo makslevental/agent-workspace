@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CURSOR_TASK="$SCRIPT_DIR/cursor-task"
+CURSOR_TASK="$SCRIPT_DIR/cursor-agent-task.sh"
 
 usage() {
     cat <<'EOF'
@@ -19,7 +19,7 @@ Options:
   --workspace DIR     Workspace directory (required)
   --output-dir DIR    Output directory (default: <workspace>/.cursor/tasks)
   --task TASK         Task name prefix (default: timestamp)
-  --timeout SECS      Per-agent timeout in seconds (default: 360)
+  --timeout SECS      Per-agent timeout in seconds (default: 480)
   -h, --help          Show this help
 
 Default models: gpt-5.3-codex-fast, sonnet-4.6, gemini-3.1-pro, gemini-3-flash
@@ -45,7 +45,7 @@ names=""
 workspace=""
 output_dir=""
 task_prefix=""
-timeout_secs=360
+timeout_secs=480
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
