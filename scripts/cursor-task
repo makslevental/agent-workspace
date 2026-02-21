@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: cursor-task [OPTIONS] --workspace DIR PROMPT...
+
+Run a Cursor agent non-interactively to produce a markdown file.
+
+The agent can read the entire workspace and run whitelisted shell commands,
+but can only write to the output directory configured in .cursor/cli.json.
+The workspace must contain .cursor/cli.json with a non-empty deny list and
+a Write(...) rule in the allow list.
+
+Options:
+  --model MODEL       Model to use (default: sonnet-4)
+  --workspace DIR     Workspace directory (required)
+  --name NAME         Task name for the output subdirectory (default: timestamp)
+  --timeout SECS      Timeout in seconds (default: 600)
+  -h, --help          Show this help
+
+Examples:
+  cursor-task --workspace ~/iree/main \
+    "Review the recent changes to the compiler pipeline"
+
+  cursor-task --model gpt-5 --workspace ~/iree/main --name vmvx-analysis \
+    "Analyze test failures in the VMVX backend"
+EOF
+    exit "${1:-0}"
+}
+
+model="sonnet-4"
+workspace=""
+task_name=""
+timeout_secs=600
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --model)     model="$2"; shift 2 ;;
+        --workspace) workspace="$2"; shift 2 ;;
+        --name)      task_name="$2"; shift 2 ;;
+        --timeout)   timeout_secs="$2"; shift 2 ;;
+        -h|--help)   usage 0 ;;
+        --)          shift; break ;;
+        -*)          echo "Error: Unknown option: $1" >&2; usage 1 ;;
+        *)           break ;;
+    esac
+done
+
+prompt="$*"
+
+if [[ -z "$workspace" || -z "$prompt" ]]; then
+    echo "Error: --workspace and a prompt are required." >&2
+    usage 1
+fi
+
+workspace="$(realpath "$workspace")"
+
+if [[ ! -d "$workspace" ]]; then
+    echo "Error: workspace does not exist: $workspace" >&2
+    exit 1
+fi
+
+# --- Validate cli.json ---
+
+cli_json="$workspace/.cursor/cli.json"
+
+if [[ ! -f "$cli_json" ]]; then
+    echo "Error: $cli_json not found." >&2
+    echo "Create it with appropriate permissions before running cursor-task." >&2
+    exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+    echo "Error: jq is required but not found." >&2
+    exit 1
+fi
+
+deny_count=$(jq '.permissions.deny | length' "$cli_json")
+if [[ "$deny_count" -eq 0 ]]; then
+    echo "Error: $cli_json has an empty deny list." >&2
+    echo "Add deny rules (e.g. Write(**), Delete(**), Shell(**)) for safety." >&2
+    exit 1
+fi
+
+# Extract the output directory from the first Write(...) allow rule.
+write_pattern=$(jq -r '
+  .permissions.allow[]
+  | select(startswith("Write("))
+  | sub("^Write\\("; "")
+  | sub("/\\*\\*\\)$"; "")
+' "$cli_json" | head -1)
+
+if [[ -z "$write_pattern" ]]; then
+    echo "Error: no Write(...) rule found in allow list of $cli_json." >&2
+    echo "Add e.g. \"Write(.cursor/tasks/**)\" to permissions.allow." >&2
+    exit 1
+fi
+
+# Resolve the output base directory (pattern may be relative to workspace).
+if [[ "$write_pattern" = /* ]]; then
+    output_base="$write_pattern"
+else
+    output_base="$workspace/$write_pattern"
+fi
+
+# --- Create task output directory ---
+
+if [[ -z "$task_name" ]]; then
+    task_name="$(date +%Y%m%d-%H%M%S)"
+fi
+task_dir="$output_base/$task_name"
+output_file="$task_dir/output.md"
+mkdir -p "$task_dir"
+
+# --- Run the agent ---
+
+full_prompt="$prompt
+
+IMPORTANT: Write your output ONLY to: $output_file
+Do NOT create or modify any other files."
+
+echo "cursor-task"
+echo "  Model:     $model"
+echo "  Workspace: $workspace"
+echo "  Output:    $output_file"
+echo "  Timeout:   ${timeout_secs}s"
+echo ""
+
+timeout "$timeout_secs" cursor-agent --print \
+    --model "$model" \
+    --force \
+    --trust \
+    --output-format text \
+    --workspace "$workspace" \
+    "$full_prompt"
+
+echo ""
+if [[ -f "$output_file" ]]; then
+    echo "Done. Output: $output_file"
+else
+    echo "Warning: agent finished but $output_file was not created." >&2
+    exit 1
+fi
