@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Grep(**)",
+      "LS(**)",
+      "SemanticSearch(**)",
+      "Shell(git diff **)",
+      "Shell(git status **)",
+      "Shell(git log **)",
+      "Shell(git show **)",
+      "Shell(git blame **)",
+      "Write(.cursor/tasks/**)"
+    ],
+    "deny": [
+      "Write(**)",
+      "Delete(**)",
+      "Shell(**)"
+    ]
+  }
+}

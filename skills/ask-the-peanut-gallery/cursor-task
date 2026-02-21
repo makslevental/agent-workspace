@@ -16,7 +16,7 @@ Options:
   --model MODEL       Model to use (default: sonnet-4)
   --workspace DIR     Workspace directory (required)
   --name NAME         Task name for the output subdirectory (default: timestamp)
-  --timeout SECS      Timeout in seconds (default: 600)
+  --timeout SECS      Timeout in seconds (default: 240)
   -h, --help          Show this help
 
 Examples:
@@ -32,7 +32,7 @@ EOF
 model="sonnet-4"
 workspace=""
 task_name=""
-timeout_secs=600
+timeout_secs=240
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -113,6 +113,20 @@ task_dir="$output_base/$task_name"
 output_file="$task_dir/output.md"
 mkdir -p "$task_dir"
 
+# --- Log metadata ---
+
+meta_file="$task_dir/meta.json"
+start_time="$(date -Iseconds)"
+
+jq -n \
+    --arg model "$model" \
+    --arg workspace "$workspace" \
+    --arg prompt "$prompt" \
+    --arg start "$start_time" \
+    --arg timeout "$timeout_secs" \
+    '{model: $model, workspace: $workspace, prompt: $prompt, start: $start, timeout: ($timeout | tonumber)}' \
+    > "$meta_file"
+
 # --- Run the agent ---
 
 full_prompt="$prompt
@@ -127,16 +141,24 @@ echo "  Output:    $output_file"
 echo "  Timeout:   ${timeout_secs}s"
 echo ""
 
+rc=0
 timeout "$timeout_secs" cursor-agent --print \
     --model "$model" \
     --force \
     --trust \
     --output-format text \
     --workspace "$workspace" \
-    "$full_prompt"
+    "$full_prompt" || rc=$?
+
+end_time="$(date -Iseconds)"
+jq --arg end "$end_time" --argjson rc "$rc" '.end = $end | .exit_code = $rc' "$meta_file" > "$meta_file.tmp" \
+    && mv "$meta_file.tmp" "$meta_file"
 
 echo ""
-if [[ -f "$output_file" ]]; then
+if [[ "$rc" -ne 0 ]]; then
+    echo "Agent exited with code $rc. Output: $task_dir" >&2
+    exit "$rc"
+elif [[ -f "$output_file" ]]; then
     echo "Done. Output: $output_file"
 else
     echo "Warning: agent finished but $output_file was not created." >&2
