@@ -14,13 +14,14 @@ Each agent gets its own output subdirectory under the task directory.
 Uses cursor-task internally.
 
 Options:
-  --models M1,M2,...  Comma-separated model IDs (default: see below)
-  --names N1,N2,...   Comma-separated agent names (default: see below)
-  --workspace DIR     Workspace directory (required)
-  --output-dir DIR    Output directory (default: <workspace>/.cursor/tasks)
-  --task TASK         Task name prefix (default: timestamp)
-  --timeout SECS      Per-agent timeout in seconds (default: 480)
-  -h, --help          Show this help
+  --models M1,M2,...    Comma-separated model IDs (default: see below)
+  --names N1,N2,...     Comma-separated agent names (default: see below)
+  --persona-file PATH  Path to a persona .md file (repeatable, one per agent)
+  --workspace DIR       Workspace directory (required)
+  --output-dir DIR      Output directory (default: <workspace>/.cursor/tasks)
+  --task TASK           Task name prefix (default: timestamp)
+  --timeout SECS        Per-agent timeout in seconds (default: 480)
+  -h, --help            Show this help
 
 Default models: gpt-5.3-codex-fast, sonnet-4.6, gemini-3.1-pro, gemini-3-flash
 Default names:  gpt, claude, gemini-pro, gemini-flash
@@ -42,6 +43,7 @@ DEFAULT_NAMES="gpt,claude,gemini-pro,gemini-flash"
 
 models=""
 names=""
+persona_file_arr=()
 workspace=""
 output_dir=""
 task_prefix=""
@@ -49,12 +51,13 @@ timeout_secs=480
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --models)     models="$2"; shift 2 ;;
-        --names)      names="$2"; shift 2 ;;
-        --workspace)  workspace="$2"; shift 2 ;;
-        --output-dir) output_dir="$2"; shift 2 ;;
-        --task)       task_prefix="$2"; shift 2 ;;
-        --timeout)    timeout_secs="$2"; shift 2 ;;
+        --models)       models="$2"; shift 2 ;;
+        --names)        names="$2"; shift 2 ;;
+        --persona-file) persona_file_arr+=("$2"); shift 2 ;;
+        --workspace)    workspace="$2"; shift 2 ;;
+        --output-dir)   output_dir="$2"; shift 2 ;;
+        --task)         task_prefix="$2"; shift 2 ;;
+        --timeout)      timeout_secs="$2"; shift 2 ;;
         -h|--help)    usage 0 ;;
         --)           shift; break ;;
         -*)           echo "Error: Unknown option: $1" >&2; usage 1 ;;
@@ -70,6 +73,14 @@ if [[ -z "$workspace" || -z "$prompt" ]]; then
 fi
 
 ws="$(realpath "$workspace")"
+
+# --- Persona helpers ---
+strip_frontmatter() {
+    awk 'BEGIN{fm=0} /^---$/{fm++; next} fm>=2{print} fm<2 && fm>0{next}' "$1"
+}
+extract_name() {
+    awk '/^---$/{fm++; next} fm==1 && /^name:/{gsub(/^name: */, ""); print; exit}' "$1"
+}
 
 if [[ -z "$output_dir" ]]; then
     output_dir="$ws/.cursor/tasks"
@@ -91,8 +102,21 @@ if [[ -n "$names" ]]; then
         echo "Error: --names count (${#name_arr[@]}) must match --models count (${#model_arr[@]})." >&2
         exit 1
     fi
+elif [[ ${#persona_file_arr[@]} -gt 0 ]]; then
+    # Derive names from persona frontmatter.
+    name_arr=()
+    for pf in "${persona_file_arr[@]}"; do
+        pname="$(extract_name "$pf")"
+        name_arr+=("${pname:-$(basename "$pf" .md)}")
+    done
 else
     name_arr=("${model_arr[@]}")
+fi
+
+# Validate persona file count matches model count.
+if [[ ${#persona_file_arr[@]} -gt 0 && ${#persona_file_arr[@]} -ne ${#model_arr[@]} ]]; then
+    echo "Error: --persona-file count (${#persona_file_arr[@]}) must match --models count (${#model_arr[@]})." >&2
+    exit 1
 fi
 
 if [[ -z "$task_prefix" ]]; then
@@ -119,6 +143,22 @@ for i in "${!model_arr[@]}"; do
     log_file="$log_dir/agent.log"
     log_files+=("$log_file")
 
+    # Build per-agent prompt: prepend persona content if provided.
+    if [[ ${#persona_file_arr[@]} -gt 0 ]]; then
+        persona_content="$(strip_frontmatter "${persona_file_arr[$i]}")"
+        agent_prompt="=== REVIEWER PERSONA ===
+You are reviewing code as the following reviewer. Adopt their expertise,
+review style, priorities, and feedback patterns throughout your review.
+
+${persona_content}
+
+=== END PERSONA ===
+
+${prompt}"
+    else
+        agent_prompt="$prompt"
+    fi
+
     echo "Starting: $name ($model)"
 
     "$CURSOR_TASK" \
@@ -127,7 +167,7 @@ for i in "${!model_arr[@]}"; do
         --output-dir "$output_dir" \
         --name "$task_name" \
         --timeout "$timeout_secs" \
-        "$prompt" \
+        "$agent_prompt" \
         > "$log_file" 2>&1 &
     pids+=($!)
 done

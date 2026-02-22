@@ -5,9 +5,10 @@ description: Multi-model code review with two rounds — initial review, triage/
 
 # Peanut Gallery Code Review
 
-Two-round code review using multiple AI models (GPT, Claude/Sonnet, Gemini Pro,
-Gemini Flash) as Cursor agents. Round 1 collects reviews, you triage and fix,
-then Round 2 validates your rebuttals.
+Persona-driven two-round code review using multiple AI models as Cursor agents.
+Each reviewer adopts a specific persona (from the `personas/` subdirectory) with
+distinct expertise, review style, and priorities. Round 1 collects reviews, you
+triage and fix, then Round 2 validates your rebuttals.
 
 This skill reuses `cursor-agent-multi.sh` from the `ask-the-peanut-gallery`
 skill directory. Locate that sibling skill directory to find the script.
@@ -43,14 +44,50 @@ diff stat and confirm. Record the exact git commands (repo paths, SHAs, diff
 arguments) needed to reproduce the diff — you will pass these to the review
 agents in Steps 2 and 4 so they can inspect the changes themselves.
 
+### Step 1.5 — Select reviewers
+
+Select a diverse panel of 4 reviewer personas from the `personas/` subdirectory
+of this skill.
+
+1. **Read all `*.md` files** in the `personas/` subdirectory. Parse the YAML
+   frontmatter from each file to extract `name` and `models` (list of compatible
+   model IDs).
+
+2. **Classify personas**: A persona is an "expert" if their `models` list
+   includes `opus` or `gpt-5.3-codex-high` variants (e.g., `opus-4.6-thinking`,
+   `opus-4.6`, `gpt-5.3-codex-high`). All others are "generic."
+
+3. **Auto-pick 4 personas** for diversity:
+   - Pick 1 random expert persona + 3 random generic personas.
+   - For each persona, pick one model from their `models` list, avoiding
+     duplicate models across the panel where possible.
+
+4. If the user requested specific personas by name, use those instead of
+   auto-picking.
+
+5. **Show the panel to the user** before proceeding:
+   ```
+   Reviewers: Merlin (opus-4.6-thinking), Petra (composer-1.5), Vera (gemini-3-flash), Soren (sonnet-4.6-thinking)
+   ```
+
+6. Record the selected persona file paths, model IDs, and lowercase names for
+   use in Steps 2 and 4.
+
 ### Step 2 — Round 1: Initial review
 
-Run `cursor-agent-multi.sh` with `--task review-round1`:
+Run `cursor-agent-multi.sh` with `--task review-round1`, passing `--models`,
+`--names`, and `--persona-file` for each selected reviewer:
 
 ```bash
 /path/to/cursor-agent-multi.sh \
   --workspace <WORKSPACE> \
   --task review-round1 \
+  --models <MODEL1>,<MODEL2>,<MODEL3>,<MODEL4> \
+  --names <name1>,<name2>,<name3>,<name4> \
+  --persona-file /path/to/personas/<persona1>.md \
+  --persona-file /path/to/personas/<persona2>.md \
+  --persona-file /path/to/personas/<persona3>.md \
+  --persona-file /path/to/personas/<persona4>.md \
   "<PROMPT>"
 ```
 
@@ -98,12 +135,19 @@ Read all Round 1 reviews and process them:
 
 ### Step 4 — Round 2: Rebuttal review
 
-Run `cursor-agent-multi.sh` again with `--task review-round2`:
+Run `cursor-agent-multi.sh` again with `--task review-round2`, using the same
+persona panel from Step 1.5:
 
 ```bash
 /path/to/cursor-agent-multi.sh \
   --workspace <WORKSPACE> \
   --task review-round2 \
+  --models <MODEL1>,<MODEL2>,<MODEL3>,<MODEL4> \
+  --names <name1>,<name2>,<name3>,<name4> \
+  --persona-file /path/to/personas/<persona1>.md \
+  --persona-file /path/to/personas/<persona2>.md \
+  --persona-file /path/to/personas/<persona3>.md \
+  --persona-file /path/to/personas/<persona4>.md \
   "<PROMPT>"
 ```
 
@@ -156,6 +200,8 @@ Present the final summary:
   consider summarizing or splitting the review.
 - The user can pass `--models` or `--timeout` flags; forward them to both
   `cursor-agent-multi.sh` invocations.
+- The user can request specific personas by name (e.g., "use Merlin and Irene").
+  In that case, skip auto-picking and use the requested personas.
 - **Always include this line in every prompt sent to agents:**
   "You are running non-interactively. No human will see your questions or
   reply. Never ask for clarification. Make reasonable assumptions and state
