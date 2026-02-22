@@ -81,6 +81,34 @@ of this skill.
    ]
    ```
 
+### Step 1.8 — Pre-build the project
+
+Before launching the review agents, ensure the project builds successfully.
+The review agents have limited permissions and may not be able to build from
+scratch — having fresh build artifacts in the workspace lets them run tests
+and inspect compiler output.
+
+Run a single Cursor agent via `cursor-agent-task.sh` to build:
+
+```bash
+/path/to/cursor-agent-task.sh \
+  --workspace <WORKSPACE> \
+  --name pre-build \
+  --timeout 600 \
+  "Build the project. Run the standard build command for this repo (e.g.
+  cmake --build, ninja, make, cargo build, etc.). If the build fails, report
+  the errors. Do not fix anything — just build and report the result.
+
+  You are running non-interactively. No human will see your questions or
+  reply. Never ask for clarification. Make reasonable assumptions and state
+  them. If a tool call fails, try alternative invocations before giving up.
+  Provide a complete answer no matter what."
+```
+
+Read the agent's output. If the build failed, **stop and report the failure
+to the user** — there is no point running reviews against code that doesn't
+compile. If the build succeeded, proceed to Step 2.
+
 ### Step 2 — Round 1: Initial review
 
 Run `cursor-agent-multi.py` with `--task review-round1`, passing the `--agents`
