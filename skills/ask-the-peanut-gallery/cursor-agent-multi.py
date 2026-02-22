@@ -177,7 +177,7 @@ def main():
     print()
 
     # Launch agents in parallel
-    processes = []  # list of (name, model, proc, log_file)
+    processes = []  # list of (name, model, proc, log_file, start_time)
     for agent in agents:
         name = agent["name"]
         model = agent["model"]
@@ -197,41 +197,53 @@ def main():
 
         print(f"Starting: {name} ({model})")
 
-        with open(log_file, "w") as lf:
-            proc = subprocess.Popen(
-                [
-                    cursor_task,
-                    "--model", model,
-                    "--workspace", args.workspace,
-                    "--output-dir", output_dir,
-                    "--name", task_name,
-                    "--timeout", str(args.timeout),
-                    agent_prompt,
-                ],
-                stdout=lf,
-                stderr=subprocess.STDOUT,
-            )
-        processes.append((name, model, proc, log_file))
+        try:
+            with open(log_file, "w") as lf:
+                proc = subprocess.Popen(
+                    [
+                        cursor_task,
+                        "--model", model,
+                        "--workspace", args.workspace,
+                        "--output-dir", output_dir,
+                        "--name", task_name,
+                        "--timeout", str(args.timeout),
+                        agent_prompt,
+                    ],
+                    stdout=lf,
+                    stderr=subprocess.STDOUT,
+                )
+        except OSError as e:
+            print(f"[FAIL] {name} ({model}) - failed to launch: {e}", file=sys.stderr)
+            continue
+        processes.append((name, model, proc, log_file, time.monotonic()))
 
     print()
     print(f"All {len(processes)} agents launched. Waiting...")
     print()
+
+    if not processes:
+        print("Error: no agents were launched.", file=sys.stderr)
+        sys.exit(1)
 
     # Wait for agents in completion order
     remaining = list(processes)
     failures = 0
 
     while remaining:
-        for i, (name, model, proc, log_file) in enumerate(remaining):
+        for i, (name, model, proc, log_file, t0) in enumerate(remaining):
             rc = proc.poll()
             if rc is not None:
                 remaining.pop(i)
+                elapsed = int(time.monotonic() - t0)
                 output_file = os.path.join(output_dir, task_prefix, name, "output.md")
 
                 if rc == 0:
-                    print(f"[done] {name} ({model})")
+                    print(f"[done] {name} ({model}) [{elapsed}s]")
+                elif rc == 124:
+                    print(f"[TIMEOUT] {name} ({model}) - timed out after {args.timeout}s")
+                    failures += 1
                 else:
-                    print(f"[FAIL] {name} ({model}) - exit code {rc}")
+                    print(f"[FAIL] {name} ({model}) - exit code {rc} [{elapsed}s]")
                     failures += 1
 
                 print(f"       Log: {log_file}")
