@@ -81,21 +81,15 @@ of this skill.
    ]
    ```
 
-### Step 1.8 — Pre-build the project
+### Step 1.8 — Ensure the project builds
 
-Before launching the review agents, ensure the project builds successfully.
+Before launching the review agents, make sure the project builds successfully.
 The review agents have limited permissions and may not be able to build from
-scratch — having fresh build artifacts in the workspace lets them run tests
-and inspect compiler output.
+scratch — they need fresh build artifacts to run tests and check compilation.
 
-Spawn a **Task subagent** (Bash type) to build the project. The subagent
-should figure out the standard build command for the repo (e.g. `cmake
---build`, `ninja`, `make`, `cargo build`, etc.) and run it. This runs as a
-native Claude Code agent with full shell access, not a Cursor agent.
-
-If the build fails, **stop and report the failure to the user** — there is
-no point running reviews against code that doesn't compile. If the build
-succeeded, proceed to Step 2.
+Build the project yourself (or spawn a subagent to do it). If the build fails,
+**stop and report the failure to the user** — don't run reviews against code
+that doesn't compile.
 
 ### Step 2 — Round 1: Initial review
 
