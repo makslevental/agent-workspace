@@ -2,6 +2,11 @@
 
 All notable changes to the "Mark and Recall" extension will be documented in this file.
 
+## [0.0.11] - 2026-02-22
+
+### Added
+- README now links to the [Neovim port](https://github.com/kuhar/mark-and-recall.nvim) which shares the same `marks.md` format
+
 ## [0.0.10] - 2026-02-06
 
 ### Added

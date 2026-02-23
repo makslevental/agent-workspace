@@ -39,7 +39,7 @@ exports.getTargetPath = getTargetPath;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 exports.INSTALLABLES = [
-    { name: 'mark-and-recall', kind: 'skill', resourceFile: 'mark-and-recall.md' },
+    { name: 'mark-and-recall', kind: 'skill', resourceFile: 'mark-and-recall.md', extraFiles: ['validate_marks.py'] },
     { name: 'codebase-cartographer', kind: 'agent', resourceFile: 'codebase-cartographer.md' },
 ];
 exports.AI_TOOLS = [
