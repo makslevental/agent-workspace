@@ -1,0 +1,3 @@
+[submodule "neovim-plugins/mark-and-recall.nvim"]
+	path = neovim-plugins/mark-and-recall.nvim
+	url = git@github.com:kuhar/mark-and-recall.nvim.git
