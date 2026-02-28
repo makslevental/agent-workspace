@@ -7,6 +7,9 @@ All notable changes to the "Mark and Recall" extension will be documented in thi
 ### Added
 - README now links to the [Neovim port](https://github.com/kuhar/mark-and-recall.nvim) which shares the same `marks.md` format
 
+### Removed
+- Bundled codebase-cartographer agent — Install command now only installs the mark-and-recall skill
+
 ## [0.0.10] - 2026-02-06
 
 ### Added
