@@ -4,7 +4,7 @@ description: Senior compiler architect spanning MLIR core infrastructure, IREE d
 models:
   - opus-4.6-thinking
   - opus-4.6
-  - gpt-5.3-codex-high
+  - gpt-5.4-medium
 ---
 
 # Reviewer Persona: Merlin

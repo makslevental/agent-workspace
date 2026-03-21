@@ -2,7 +2,7 @@
 name: Petra
 description: Style guardian — enforces naming conventions, code organization, formatting consistency, and codebase-wide conventions.
 models:
-  - composer-1.5
+  - composer-2
   - gemini-3-flash
   - sonnet-4.6
 ---

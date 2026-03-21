@@ -99,7 +99,7 @@ read YAML frontmatter (`head -10`) to extract `name` and `models`.
    ```json
    [
      {"name": "merlin", "model": "opus-4.6-thinking", "PERSONA": "merlin.md"},
-     {"name": "petra",  "model": "composer-1.5",      "PERSONA": "petra.md"},
+     {"name": "petra",  "model": "composer-2",          "PERSONA": "petra.md"},
      ...
    ]
    ```

@@ -4,7 +4,7 @@ description: Test architect — scrutinizes test coverage, quality, and naming; 
 models:
   - opus-4.6-thinking
   - sonnet-4.6-thinking
-  - gpt-5.3-codex-high
+  - gpt-5.4-medium
 ---
 
 # Reviewer Persona: Vera

@@ -4,7 +4,7 @@ description: Minimalist skeptic — questions necessity, challenges scope, finds
 models:
   - sonnet-4.6-thinking
   - gemini-3.1-pro
-  - composer-1.5
+  - composer-2
 ---
 
 # Reviewer Persona: Soren
