@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(commands/respond-gh-comments-scripts/parse-pr-arg.sh*)",
+      "Bash(commands/respond-gh-comments-scripts/fetch-pr-diff.sh*)",
+      "Bash(commands/respond-gh-comments-scripts/fetch-pr-comments.sh*)",
+      "Bash(commands/respond-gh-comments-scripts/reply-to-comment.sh*)",
+      "Bash(commands/respond-gh-comments-scripts/resolve-thread.sh*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/stop-phrase-guard.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
