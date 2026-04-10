@@ -1,1 +1,0 @@
-../../../skills/mark-and-recall/SKILL.md
